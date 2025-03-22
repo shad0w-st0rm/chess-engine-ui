@@ -7,7 +7,6 @@ import alert from '../components/alert';
 
 export default function Engine() {
   const [game, setGame] = useState(new Chess());
-  const [gamePosition, setGamePosition] = useState(game.fen());
   const [gameOver, setGameOver] = useState(false);
   const [fenInput, setFenInput] = useState("");
   const [playerID, setPlayerID] = useState(0);
@@ -27,9 +26,10 @@ export default function Engine() {
   // Clock timer refs and state - with properly typed clockIntervalRef
   const clockIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const gameRef = useRef(game);
+  const gameOverRef = useRef(gameOver);
+  const playerColorRef = useRef(playerColor);
   const lastMoveTimeRef = useRef(Date.now());
-  const playerIDRef = useRef(0);
-
+  const playerIDRef = useRef(playerID);
 
   const serverURL = "https://153.33.224.180:49178";
 
@@ -39,9 +39,18 @@ export default function Engine() {
   }, []);
 
   // Update gameRef when game changes
-  useEffect(() => { 
+  useEffect(() => {
     gameRef.current = game;
   }, [game]);
+
+  // Update gameOverRef when gameOver changes
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
+  
+  useEffect(() => {
+    playerColorRef.current = playerColor;
+  }, [playerColor]);
 
   // Clock effect
   useEffect(() => {
@@ -73,6 +82,30 @@ export default function Engine() {
       }
     };
   }, [isClockRunning, activeColor]);
+
+  useEffect(() => {
+    // Function to send the keepalive request to the backend
+    const sendKeepAliveRequest = async () => {
+      try {
+        const response = await fetch(`${serverURL}/keepalive?playerID=${playerIDRef.current}`);
+        if (response.ok) {
+          console.log('Keep-alive request successful');
+        } else {
+          console.error('Failed to send keep-alive request. Status Code:', response.status);
+        }
+      } catch (error) {
+        console.error('Error sending keep-alive request:', error);
+      }
+    };
+
+    // Set interval to send the keep-alive request every 30 seconds
+    const keepAliveInterval = setInterval(() => {
+      sendKeepAliveRequest();
+    }, 30 * 1000); // 30 seconds
+
+    // Clean up interval on component unmount
+    return () => clearInterval(keepAliveInterval);
+  }, []);
 
   // Initialize time when time control changes
   useEffect(() => {
@@ -121,7 +154,7 @@ export default function Engine() {
   }
 
   const handleTimeOut = (color: string) => {
-    if (gameOver) return;
+    if (gameOverRef.current) return;
 
     if (clockIntervalRef.current) {
       clearInterval(clockIntervalRef.current);
@@ -160,7 +193,7 @@ export default function Engine() {
   };
 
   const engineMove = async () => {
-    if (gameOver || !game.turn() || (playerColor === "white" && game.turn() === "w") || (playerColor === "black" && game.turn() === "b")) {
+    if (gameOverRef.current || !gameRef.current.turn() || (playerColorRef.current === "white" && gameRef.current.turn() === "w") || (playerColorRef.current === "black" && gameRef.current.turn() === "b")) {
       return;
     }
 
@@ -179,20 +212,41 @@ export default function Engine() {
 
         // Stop clock, apply move, apply increment, switch active color, restart clock
         stopClock();
-        const prevTurn = game.turn();
-        game.move(moveData);
-        setGamePosition(game.fen());
+        const prevTurn = gameRef.current.turn();
+        gameRef.current.move(moveData);
+        setGame(gameRef.current);
         applyIncrement(prevTurn);
         switchActiveColor();
         startClock();
 
-        checkGameOver();
+        setTimeout(() => {
+          if (gameRef.current.isGameOver()) {
+
+            stopClock();
+            setGameOver(true);
+
+            let message;
+            if (gameRef.current.isCheckmate()) {
+              message = `Checkmate! ${gameRef.current.turn() === 'w' ? 'Black' : 'White'} wins!`;
+            } else if (gameRef.current.isDraw()) {
+              message = "Draw!";
+            } else {
+              message = "Game Over";
+            }
+
+            alert("Game Over", message, [
+              { text: "Ok", onPress: () => { }, style: "default" }
+            ]);
+          } else {
+
+
+          }
+        }, 350);
 
         const response = await fetch(`${serverURL}/playermove?playerID=${playerIDRef.current}&move=${moveData}`);
         if (response.ok) {
-          console.log(response.text());
-        }
-        else {
+          console.log(await response.text());
+        } else {
           console.error('Failed to make move on backend. Status Code:', response.status);
         }
       }
@@ -205,27 +259,28 @@ export default function Engine() {
   };
 
   const onDrop = (sourceSquare: Square, targetSquare: Square, piece: Piece) => {
-    if (gameOver) return false;
+    if (gameOverRef.current) return false;
 
     // Check if it's player's turn
     const pieceColor = piece[0].toLowerCase();
-    if ((playerColor === "white" && pieceColor !== "w") || (playerColor === "black" && pieceColor !== "b")) {
+    if ((playerColorRef.current === "white" && pieceColor !== "w") || (playerColorRef.current === "black" && pieceColor !== "b")) {
       return false;
     }
 
     try {
       stopClock();
-      const prevTurn = game.turn();
+      const prevTurn = gameRef.current.turn();
 
-      const move = game.move({
+      const move = gameRef.current.move({
         from: sourceSquare,
         to: targetSquare,
         promotion: piece[1].toLowerCase() === "p" ? "q" : undefined
       });
 
+      setGame(gameRef.current);
+
       if (!move) return false;
 
-      setGamePosition(game.fen());
       applyIncrement(prevTurn);
       switchActiveColor();
 
@@ -301,7 +356,6 @@ export default function Engine() {
     stopClock();
     const newGame = new Chess();
     setGame(newGame);
-    setGamePosition(newGame.fen());
     setGameOver(false);
 
     // Reset clock times
@@ -314,11 +368,11 @@ export default function Engine() {
   };
 
   const handleResign = () => {
-    if (gameOver) return;
+    if (gameOverRef.current) return;
 
     stopClock();
 
-    alert("Game Over", `You resigned. ${playerColor === "white" ? "Black" : "White"} wins!`, [
+    alert("Game Over", `You resigned. ${playerColorRef.current === "white" ? "Black" : "White"} wins!`, [
       { text: "Ok", onPress: () => setGameOver(true), style: "default" },
       { text: "Cancel", onPress: () => startClock(), style: "cancel" }
     ]);
@@ -335,9 +389,8 @@ export default function Engine() {
     stopClock();
     const loadedGame = new Chess(fenInput);
     setGame(loadedGame);
-    setGamePosition(loadedGame.fen());
     setGameOver(false);
-    setActiveColor(loadedGame.turn());
+    // setActiveColor(loadedGame.turn());
 
     await endGame();
 
@@ -356,6 +409,16 @@ export default function Engine() {
         setPlayerID(data.playerID);
         playerIDRef.current = data.playerID;
         console.log('PlayerID received:', data.playerID);
+
+        const newPlayerColor = boardOrientation === "white" ? "white" : "black";
+        setPlayerColor(newPlayerColor);
+        // setBoardOrientation(newPlayerColor);
+        setActiveColor(loadedGame.turn());
+        startClock();
+
+        if (newPlayerColor !== (loadedGame.turn() === "w" ? "white" : "black")) {
+          setTimeout(engineMove, 500);
+        }
       } else {
         console.error("Failed to create game. Status code: " + response.status);
       }
@@ -377,14 +440,14 @@ export default function Engine() {
   };
 
   const checkGameOver = () => {
-    if (game.isGameOver()) {
+    if (gameRef.current.isGameOver()) {
       stopClock();
       setGameOver(true);
 
       let message;
-      if (game.isCheckmate()) {
-        message = `Checkmate! ${game.turn() === 'w' ? 'Black' : 'White'} wins!`;
-      } else if (game.isDraw()) {
+      if (gameRef.current.isCheckmate()) {
+        message = `Checkmate! ${gameRef.current.turn() === 'w' ? 'Black' : 'White'} wins!`;
+      } else if (gameRef.current.isDraw()) {
         message = "Draw!";
       } else {
         message = "Game Over";
@@ -421,8 +484,8 @@ export default function Engine() {
         <View style={[styles.topControlsContainer, { width: boardSize }]}>
           <View style={styles.buttonRow}>
             <Button title="Play as White" onPress={handlePlayAsWhite} />
-            <Button title="Play as Black" onPress={handlePlayAsBlack} />
             <Button title="New Game" onPress={handleNewGame} />
+            <Button title="Play as Black" onPress={handlePlayAsBlack} />
           </View>
           <View style={styles.buttonRow}>
             <Button title="Flip Board" onPress={handleFlipBoard} />
@@ -447,7 +510,7 @@ export default function Engine() {
           {/* The actual chessboard */}
           <View style={styles.boardWrapper}>
             <Chessboard
-              position={gamePosition}
+              position={gameRef.current.fen()}
               onPieceDrop={onDrop}
               boardWidth={boardSize}
               boardOrientation={boardOrientation == "white" ? "white" : "black"}
