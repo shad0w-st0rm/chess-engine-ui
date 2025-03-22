@@ -16,8 +16,8 @@ export default function Engine() {
   const [playerColor, setPlayerColor] = useState("white");
 
   // Time control states
-  const [timeControl, setTimeControl] = useState("10");
-  const [increment, setIncrement] = useState("5");
+  const [timeControl, setTimeControl] = useState("3");
+  const [increment, setIncrement] = useState("0");
   const [whiteTime, setWhiteTime] = useState(600); // in seconds
   const [blackTime, setBlackTime] = useState(600); // in seconds
   const [isClockRunning, setIsClockRunning] = useState(false);
@@ -47,7 +47,7 @@ export default function Engine() {
   useEffect(() => {
     gameOverRef.current = gameOver;
   }, [gameOver]);
-  
+
   useEffect(() => {
     playerColorRef.current = playerColor;
   }, [playerColor]);
@@ -268,7 +268,6 @@ export default function Engine() {
     }
 
     try {
-      stopClock();
       const prevTurn = gameRef.current.turn();
 
       const move = gameRef.current.move({
@@ -280,6 +279,8 @@ export default function Engine() {
       setGame(gameRef.current);
 
       if (!move) return false;
+
+      stopClock();
 
       applyIncrement(prevTurn);
       switchActiveColor();
@@ -483,13 +484,23 @@ export default function Engine() {
         {/* Top controls - limited to board width */}
         <View style={[styles.topControlsContainer, { width: boardSize }]}>
           <View style={styles.buttonRow}>
-            <Button title="Play as White" onPress={handlePlayAsWhite} />
-            <Button title="New Game" onPress={handleNewGame} />
-            <Button title="Play as Black" onPress={handlePlayAsBlack} />
+            <View style={styles.buttonContainer}>
+              <Button title="Play as White" onPress={handlePlayAsWhite} />
+            </View>
+            <View style={styles.buttonContainer}>
+              <Button title="New Game" onPress={handleNewGame} />
+            </View>
+            <View style={styles.buttonContainer}>
+              <Button title="Play as Black" onPress={handlePlayAsBlack} />
+            </View>
           </View>
           <View style={styles.buttonRow}>
-            <Button title="Flip Board" onPress={handleFlipBoard} />
-            <Button title="Resign" onPress={handleResign} />
+            <View style={styles.buttonContainer}>
+              <Button title="Flip Board" onPress={handleFlipBoard} />
+            </View>
+            <View style={styles.buttonContainer}>
+              <Button title="Resign" onPress={handleResign} />
+            </View>
           </View>
         </View>
 
@@ -566,7 +577,9 @@ export default function Engine() {
               onChangeText={setFenInput}
               placeholder="Enter FEN String"
             />
-            <Button title="Load" onPress={handleLoadPosition} />
+            <View style={styles.buttonContainer}>
+              <Button title="Load" onPress={handleLoadPosition} />
+            </View>
           </View>
         </View>
       </View>
@@ -587,9 +600,11 @@ const styles = StyleSheet.create({
   },
   topControlsContainer: {
     marginBottom: 10,
+    alignSelf: 'center',
   },
   bottomControlsContainer: {
     marginTop: 15,
+    alignSelf: 'center',
   },
   timeControlContainer: {
     marginTop: 15,
@@ -598,6 +613,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  buttonContainer: {
+    //flex: 1,
+    //marginHorizontal: 5,
   },
   inputRow: {
     flexDirection: 'row',
